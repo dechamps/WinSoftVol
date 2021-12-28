@@ -64,7 +64,7 @@ Return Value:
     NTSTATUS            status;
     WDFDRIVER           hDriver;
 
-    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Toaster Generic Filter Driver Sample - Driver Framework Edition.\n"));
+    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Toaster Generic Filter Driver Sample with everything allowed - Driver Framework Edition.\n"));
 
     //
     // Initialize driver config to control the attributes that

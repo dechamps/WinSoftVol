@@ -10,8 +10,8 @@
 
 [Version]
 Signature="$WINDOWS NT$"
-Class=TOASTER
-ClassGuid={B85B7C50-6A01-11d2-B841-00C04FAD5171}
+Class=MEDIA
+ClassGuid={4d36e96c-e325-11ce-bfc1-08002be10318}
 Provider=%ProviderString%
 DriverVer=06/16/1999,5.00.2064
 CatalogFile=wudf.cat
@@ -19,18 +19,6 @@ CatalogFile=wudf.cat
 [DestinationDirs]
 DefaultDestDir = 12
 UMDriverCopy=12,UMDF ; copy to drivers/umdf
-
-; ================= Class section =====================
-
-[ClassInstall32]
-Addreg=ToasterClassReg     
-
-[ToasterClassReg]
-HKR,,,0,%ClassName%
-HKR,,Icon,,100
-HKR,,DeviceCharacteristics,0x10001,0x100     ;Use same security checks on relative opens
-HKR,,Security,,"D:P(A;;GA;;;SY)(A;;GA;;;BA)" ;Allow generic all access to system and built-in Admin.
-                                             ;This one overrides the security set by the driver
 
 ;*****************************************
 ; Toaster Device  Install Section
@@ -42,10 +30,18 @@ HKR,,Security,,"D:P(A;;GA;;;SY)(A;;GA;;;BA)" ;Allow generic all access to system
 
 ; For XP and later
 [Standard.NT$ARCH$]
-%WdfSimpleDevice.DeviceDesc%=Toaster_Device, root\toaster
+%WdfSimpleDevice.DeviceDesc%=Toaster_Device, USB\VID_46F4&PID_0002&REV_0000&MI_00
 
 [Toaster_Device.NT]
 CopyFiles=UMDriverCopy
+Include=wdma_usb.inf
+Needs=USBAudio
+
+[Toaster_Device.NT.hw]
+AddReg=Toaster_Device_AddReg
+
+[Toaster_Device_AddReg]
+HKR,,"UpperFilters",0x00010008,"WUDFRd" ; FLG_ADDREG_TYPE_MULTI_SZ | FLG_ADDREG_APPEND
 
 ; ---------------- file copy
 [UMDriverCopy]
@@ -73,6 +69,12 @@ ServiceBinary = %12%\WUDFRd.sys
 [Toaster_Device.NT.Wdf]
 UmdfService=filterum, filter_Install
 UmdfServiceOrder=filterum
+UmdfMethodNeitherAction=Copy
+UmdfDirectHardwareAccess=AllowDirectHardwareAccess
+UmdfHostProcessSharing=ProcessSharingDisabled
+UmdfImpersonationLevel=Delegation
+UmdfKernelModeClientPolicy=AllowKernelModeClients
+UmdfFileObjectPolicy=AllowNullAndUnknownFileObjects
 
 [filter_Install]
 UmdfLibraryVersion=$UMDFVERSION$
