@@ -1,0 +1,110 @@
+;/*++
+;
+;Copyright (c) 1990-1999 Microsoft Corporation All rights Reserved
+;
+;Module Name:
+;
+;    filter.INF
+;
+;Abstract:
+;    INF file for installing toaster device drivers
+;    This file is dependant on wdffeatured.inf
+;
+;--*/
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class=MEDIA
+ClassGuid={4d36e96c-e325-11ce-bfc1-08002be10318}
+Provider    = %ProviderName%
+DriverVer   = 06/16/1999,5.00.2064
+CatalogFile = KmdfSamples.cat
+
+[DestinationDirs]
+DefaultDestDir = 12
+ToasterClassInstallerCopyFiles      = 11
+ToasterFilter_CoInstaller_CopyFiles = 11
+
+;*****************************************
+; Toaster Device Filter Install Section
+;*****************************************
+
+[Manufacturer]
+%StdMfg%=Standard,NT$ARCH$
+
+[Standard.NT$ARCH$]
+%ToasterFilter.DeviceDesc%=ToasterFilter, USB\VID_46F4&PID_0002&REV_0000&MI_00
+
+[ToasterFilter.NT]  
+CopyFiles=ToasterFilter.NT.Copy
+Include=wdma_usb.inf
+Needs=USBAudio
+
+[ToasterFilter.NT.Copy]
+filter.sys
+
+[ToasterFilter.NT.HW]
+AddReg = ToasterFilter.NT.HW.AddReg
+
+
+[ToasterFilter.NT.HW.AddReg]  
+HKR,,"UpperFilters",0x00010000,"ToasterFilter"
+
+;*****************************************
+; Toaster Device Filter Service Section
+;*****************************************
+
+[ToasterFilter.NT.Services]
+Include=wdma_usb.inf
+Needs=USBAudio.Services
+;Do not specify SPSVCINST_ASSOCSERVICE on filter drivers. 
+AddService      = ToasterFilter,, filter_Service_Inst 
+
+[filter_Service_Inst]
+DisplayName     = %filter.SvcDesc%                            
+ServiceType     = 1                  ; SERVICE_KERNEL_DRIVER
+StartType       = 3                  ; SERVICE_DEMAND_START
+ErrorControl    = 1                  ; SERVICE_ERROR_NORMAL
+ServiceBinary   = %12%\filter.sys
+
+
+;*************************
+; Source file information
+;*************************
+
+
+[SourceDisksNames]
+1 = %DiskId1%,,,""
+
+[SourceDisksFiles]
+filter.sys         = 1,,
+WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll = 1
+
+;
+;--- ToasterFilter Coinstaller installation ------
+;
+[ToasterFilter.NT.CoInstallers]
+AddReg          = ToasterFilter_CoInstaller_AddReg
+CopyFiles       = ToasterFilter_CoInstaller_CopyFiles
+
+[ToasterFilter_CoInstaller_AddReg]
+HKR,,CoInstallers32,0x00010000, "WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll,WdfCoInstaller"
+
+[ToasterFilter_CoInstaller_CopyFiles]
+WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll
+
+[ToasterFilter.NT.Wdf]
+KmdfService              = ToasterFilter, Filter_wdfsect
+
+[Filter_wdfsect]
+KmdfLibraryVersion       = $KMDFVERSION$
+
+[Strings]
+ProviderName             = "TODO-Set-Provider"
+StdMfg                   = "(Standard system devices)"
+ClassName                = "Toaster"
+DiskId1                  = "Toaster Filter Installation Disk #1"
+ToasterFilter.DeviceDesc = "Toaster Filter"
+filter.SvcDesc           = "Toaster Filter Driver Refactored"
+Toaster.SVCDESC          = "Toaster Featured Device Driver"
+

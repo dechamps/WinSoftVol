@@ -2,9 +2,9 @@
 #include <filter.h>
 #include <ntverp.h>
 
-#define VER_FILETYPE                VFT_DLL
-#define VER_FILESUBTYPE             VFT_UNKNOWN
-#define VER_FILEDESCRIPTION_STR     "UMDF 2.0 Filter Driver for the Toaster Stack"
+#define VER_FILETYPE                VFT_DRV
+#define VER_FILESUBTYPE             VFT2_DRV_SYSTEM
+#define VER_FILEDESCRIPTION_STR     "Filter Driver for the Toaster Stack"
 #define VER_INTERNALNAME_STR        DRIVERNAME 
 #define VER_ORIGINALFILENAME_STR    DRIVERNAME
 

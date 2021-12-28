@@ -17,17 +17,15 @@ Abstract:
 
 Environment:
 
-    User mode
+    Kernel mode
 
 --*/
 
-#include <windows.h>
-#include <winioctl.h>
-#pragma warning( disable: 4201 )    // nonstandard extension used : nameless struct/union
-#include <ntstatus.h>
-#include <devpropdef.h>
-#include <wudfwdm.h>
+#include <ntddk.h>
 #include <wdf.h>
+#include <wdmsec.h> // for SDDLs
+#define NTSTRSAFE_LIB
+#include <ntstrsafe.h>
 
 #if !defined(_FILTER_H_)
 #define _FILTER_H_
