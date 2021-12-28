@@ -124,6 +124,7 @@
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);..\..\inc</AdditionalIncludeDirectories>
       <ExceptionHandling>
       </ExceptionHandling>
+      <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <AdditionalDependencies>%(AdditionalDependencies);$(SDK_LIB_PATH)\mincore.lib</AdditionalDependencies>
