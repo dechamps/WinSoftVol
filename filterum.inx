@@ -56,7 +56,9 @@ filterum.dll  = 1,,
 ;-------------- Service installation
 
 [Toaster_Device.NT.Services]
-AddService=WUDFRd,0x000001fa,WUDFRD_ServiceInstall
+Include=wdma_usb.inf
+Needs=USBAudio.Services
+AddService=WUDFRd,0x000001f8,WUDFRD_ServiceInstall
 
 [WUDFRD_ServiceInstall]
 DisplayName = %WudfRdDisplayName%
