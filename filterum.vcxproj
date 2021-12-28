@@ -22,7 +22,7 @@
     <ProjectGuid>{3CC42473-D121-41F4-AE26-1F2F0AC65E82}</ProjectGuid>
     <RootNamespace>$(MSBuildProjectName)</RootNamespace>
     <UMDF_VERSION_MAJOR>2</UMDF_VERSION_MAJOR>
-    <SupportsPackaging>false</SupportsPackaging>
+    <SupportsPackaging>true</SupportsPackaging>
     <RequiresPackageProject>true</RequiresPackageProject>
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
     <Platform Condition="'$(Platform)' == ''">Win32</Platform>
