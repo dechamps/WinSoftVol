@@ -64,7 +64,7 @@ Return Value:
     NTSTATUS            status;
     WDFDRIVER           hDriver;
 
-    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Toaster Generic Filter Driver Sample with everything allowed and correct service settings - Driver Framework Edition.\n"));
+    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Toaster Generic Filter Driver Sample with synchronous send - Driver Framework Edition.\n"));
 
     //
     // Initialize driver config to control the attributes that
@@ -308,7 +308,7 @@ Routine Description:
     // fire and forget.
     //
     WDF_REQUEST_SEND_OPTIONS_INIT(&options,
-                                  WDF_REQUEST_SEND_OPTION_SEND_AND_FORGET);
+        WDF_REQUEST_SEND_OPTION_SYNCHRONOUS);
 
     KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Before WdfRequestSend\n"));
 
@@ -316,11 +316,13 @@ Routine Description:
 
     KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "After WdfRequestSend\n"));
 
-    if (ret == FALSE) {
-        status = WdfRequestGetStatus (Request);
+    status = WdfRequestGetStatus(Request);
+    if (!NT_SUCCESS(status)) {
         KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WdfRequestSend failed: 0x%x\n", status));
-        WdfRequestComplete(Request, status);
     }
+
+    WdfRequestComplete(Request, status);
+    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "After WdfRequestComplete\n"));
 
     return;
 }
