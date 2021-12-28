@@ -64,7 +64,7 @@ Return Value:
     NTSTATUS            status;
     WDFDRIVER           hDriver;
 
-    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Toaster Generic Filter Driver Sample with everything allowed - Driver Framework Edition.\n"));
+    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Toaster Generic Filter Driver Sample with everything allowed and no queue - Driver Framework Edition.\n"));
 
     //
     // Initialize driver config to control the attributes that
@@ -135,7 +135,6 @@ Return Value:
     PFILTER_EXTENSION       filterExt;
     NTSTATUS                status;
     WDFDEVICE               device;    
-    WDF_IO_QUEUE_CONFIG     ioQueueConfig;
 
     PAGED_CODE ();
 
@@ -174,6 +173,7 @@ Return Value:
 
     KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Toaster after FilterGetData\n"));
 
+#if 0
     //
     // Configure the default queue to be Parallel. 
     //
@@ -184,6 +184,7 @@ Return Value:
     // Framework by default creates non-power managed queues for
     // filter drivers.
     //
+
     ioQueueConfig.EvtIoDeviceControl = FilterEvtIoDeviceControl;
 
     status = WdfIoQueueCreate(device,
@@ -197,6 +198,9 @@ Return Value:
     }   
 
     KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Toaster after WdfIoQueueCreate\n"));
+#endif
+
+    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "WdfDeviceGetIoTarget = 0x%x\n", WdfDeviceGetIoTarget(device)));
 
     return status;
 }
