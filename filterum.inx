@@ -49,14 +49,12 @@ CopyFiles=UMDriverCopy
 
 ; ---------------- file copy
 [UMDriverCopy]
-wdfsimpleum.dll,,,0x00004000  ; COPYFLG_IN_USE_RENAME
 filterum.dll,,,0x00004000  ; COPYFLG_IN_USE_RENAME
 
 [SourceDisksNames]
 1 = %DiskId1%,,,""
 
 [SourceDisksFiles]
-wdfsimpleum.dll  = 1,,
 filterum.dll  = 1,,
 
 ;-------------- Service installation
@@ -73,13 +71,8 @@ ServiceBinary = %12%\WUDFRd.sys
 
 ;-------------- WDF specific section -------------
 [Toaster_Device.NT.Wdf]
-UmdfService=wdfsimpleum, wdfsimple_Install
 UmdfService=filterum, filter_Install
-UmdfServiceOrder=wdfsimpleum, filterum
-
-[wdfsimple_Install]
-UmdfLibraryVersion=$UMDFVERSION$
-ServiceBinary=%12%\UMDF\wdfsimpleum.dll
+UmdfServiceOrder=filterum
 
 [filter_Install]
 UmdfLibraryVersion=$UMDFVERSION$
