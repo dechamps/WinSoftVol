@@ -64,7 +64,7 @@ Return Value:
     NTSTATUS            status;
     WDFDRIVER           hDriver;
 
-    KdPrint(("Toaster Generic Filter Driver Sample - Driver Framework Edition.\n"));
+    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Toaster Generic Filter Driver Sample - Driver Framework Edition.\n"));
 
     //
     // Initialize driver config to control the attributes that
@@ -81,6 +81,8 @@ Return Value:
         FilterEvtDeviceAdd
     );
 
+    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Toaster after WDF_DRIVER_CONFIG_INIT\n"));
+
     //
     // Create a framework driver object to represent our driver.
     //
@@ -90,8 +92,10 @@ Return Value:
                             &config,
                             &hDriver);
     if (!NT_SUCCESS(status)) {
-        KdPrint( ("WdfDriverCreate failed with status 0x%x\n", status));
+        KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WdfDriverCreate failed with status 0x%x\n", status));
     }
+
+    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Toaster after WdfDriverCreate\n"));
     
     return status;
 }
@@ -125,6 +129,8 @@ Return Value:
 
 --*/
 {
+    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Toaster FilterEvtDeviceAdd\n"));
+
     WDF_OBJECT_ATTRIBUTES   deviceAttributes;
     PFILTER_EXTENSION       filterExt;
     NTSTATUS                status;
@@ -142,6 +148,8 @@ Return Value:
     //
     WdfFdoInitSetFilter(DeviceInit);
 
+    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Toaster after WdfFdoInitSetFilter\n"));
+
     //
     // Specify the size of device extension where we track per device
     // context.
@@ -156,11 +164,15 @@ Return Value:
     //
     status = WdfDeviceCreate(&DeviceInit, &deviceAttributes, &device);
     if (!NT_SUCCESS(status)) {
-        KdPrint( ("WdfDeviceCreate failed with status code 0x%x\n", status));
+        KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WdfDeviceCreate failed with status code 0x%x\n", status));
         return status;
     }
 
+    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Toaster after WdfDeviceCreate\n"));
+
     filterExt = FilterGetData(device);
+
+    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Toaster after FilterGetData\n"));
 
     //
     // Configure the default queue to be Parallel. 
@@ -180,9 +192,11 @@ Return Value:
                             WDF_NO_HANDLE // pointer to default queue
                             );
     if (!NT_SUCCESS(status)) {
-        KdPrint( ("WdfIoQueueCreate failed 0x%x\n", status));
+        KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WdfIoQueueCreate failed 0x%x\n", status));
         return status;
     }   
+
+    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Toaster after WdfIoQueueCreate\n"));
 
     return status;
 }
@@ -228,11 +242,15 @@ Return Value:
     UNREFERENCED_PARAMETER(OutputBufferLength);
     UNREFERENCED_PARAMETER(InputBufferLength);
 
-    KdPrint(("Entered FilterEvtIoDeviceControl\n"));
+    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Entered FilterEvtIoDeviceControl\n"));
 
     device = WdfIoQueueGetDevice(Queue);
 
+    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "After WdfIoQueueGetDevice\n"));
+
     filterExt = FilterGetData(device);
+
+    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "After FilterGetData\n"));
 
     switch (IoControlCode) {
 
@@ -263,6 +281,7 @@ Return Value:
                                                WdfDeviceGetIoTarget(device));
 #else   
         FilterForwardRequest(Request, WdfDeviceGetIoTarget(device));
+        KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "After FilterForwardRequest\n"));
 #endif
 
     return;
@@ -291,11 +310,15 @@ Routine Description:
     WDF_REQUEST_SEND_OPTIONS_INIT(&options,
                                   WDF_REQUEST_SEND_OPTION_SEND_AND_FORGET);
 
+    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Before WdfRequestSend\n"));
+
     ret = WdfRequestSend(Request, Target, &options);
+
+    KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "After WdfRequestSend\n"));
 
     if (ret == FALSE) {
         status = WdfRequestGetStatus (Request);
-        KdPrint( ("WdfRequestSend failed: 0x%x\n", status));
+        KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WdfRequestSend failed: 0x%x\n", status));
         WdfRequestComplete(Request, status);
     }
 
