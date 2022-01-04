@@ -3,15 +3,19 @@
 #include <Wdf.h>
 
 static void WinSoftVol_PrintDeviceName(IN WDFDEVICE device) {
+	WDF_OBJECT_ATTRIBUTES memoryAttributes;
+	WDF_OBJECT_ATTRIBUTES_INIT(&memoryAttributes);
+	memoryAttributes.ParentObject = device;
 	WDFMEMORY memory;
-	const NTSTATUS queryPropertyStatus = WdfDeviceAllocAndQueryProperty(device, DevicePropertyFriendlyName, PagedPool, WDF_NO_OBJECT_ATTRIBUTES, &memory);
+	const NTSTATUS queryPropertyStatus = WdfDeviceAllocAndQueryProperty(device, DevicePropertyFriendlyName, PagedPool, &memoryAttributes, &memory);
 	if (!NT_SUCCESS(queryPropertyStatus)) {
 		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_WARNING_LEVEL, "WinSoftVol: WdfDeviceAllocAndQueryProperty() failed with status 0x%x\n", queryPropertyStatus));
 		return;
 	}
-	// TODO: the memory will live for as long as the driver - we should release it early
 
 	KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "WinSoftVol: attached to device `%S`\n", (wchar_t*)WdfMemoryGetBuffer(memory, /*BufferSize=*/NULL)));
+
+	WdfObjectDelete(memory);
 }
 
 static EVT_WDF_DRIVER_DEVICE_ADD WinSoftVol_EvtWdfDriverDeviceAdd;
