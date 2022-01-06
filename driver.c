@@ -30,17 +30,41 @@ static void WinSoftVol_ForwardRequest(IN WDFDEVICE device, IN WDFREQUEST request
 	}
 }
 
+static BOOL WinSoftVol_IsGetKsTopologyNodesPropertyRequest(IN WDFREQUEST request) {
+	WDF_REQUEST_PARAMETERS requestParameters;
+	WDF_REQUEST_PARAMETERS_INIT(&requestParameters);
+	WdfRequestGetParameters(request, &requestParameters);
+
+	if (requestParameters.Type != WdfRequestTypeDeviceControl) return FALSE;
+	if (requestParameters.Parameters.DeviceIoControl.IoControlCode != IOCTL_KS_PROPERTY) return FALSE;
+
+	PVOID inputBuffer;
+	const NTSTATUS retrieveInputBufferStatus = WdfRequestRetrieveUnsafeUserInputBuffer(request, sizeof(KSPROPERTY), &inputBuffer, /*Length=*/NULL);
+	if (!NT_SUCCESS(retrieveInputBufferStatus) || inputBuffer == NULL) {
+		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: WdfRequestRetrieveUnsafeUserInputBuffer() failed with status 0x%x\n", retrieveInputBufferStatus));
+		return FALSE;
+	}
+
+	WDFMEMORY inputMemory;
+	const NTSTATUS lockInputBufferStatus = WdfRequestProbeAndLockUserBufferForRead(request, inputBuffer, sizeof(KSPROPERTY), &inputMemory);
+	if (!NT_SUCCESS(lockInputBufferStatus)) {
+		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: WdfRequestProbeAndLockUserBufferForRead() failed with status 0x%x\n", lockInputBufferStatus));
+		return FALSE;
+	}
+
+	const KSPROPERTY* const ksProperty = WdfMemoryGetBuffer(inputMemory, /*BufferSize=*/NULL);
+	const BOOL isPropertySetRequest = IsEqualGUID(&ksProperty->Set, &KSPROPSETID_Topology) && ksProperty->Id == KSPROPERTY_TOPOLOGY_NODES && ksProperty->Flags & KSPROPERTY_TYPE_GET;
+	WdfObjectDelete(inputMemory);
+	return isPropertySetRequest;
+}
+
 // We do not use EvtIoDeviceControl to handle IOCTLs.
 // This is because KS uses METHOD_NEITHER IOCTLs, which are difficult to forward from EvtIoDeviceControl().
 // See https://community.osr.com/discussion/comment/303709
 static EVT_WDF_IO_IN_CALLER_CONTEXT WinSoftVol_EvtWdfIoInCallerContext;
 static void WinSoftVol_EvtWdfIoInCallerContext(IN WDFDEVICE device, IN WDFREQUEST request) {
-	WDF_REQUEST_PARAMETERS requestParameters;
-	WDF_REQUEST_PARAMETERS_INIT(&requestParameters);
-	WdfRequestGetParameters(request, &requestParameters);
-
-	if (requestParameters.Type == WdfRequestTypeDeviceControl && requestParameters.Parameters.DeviceIoControl.IoControlCode == IOCTL_KS_PROPERTY) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "WinSoftVol: got IOCTL_KS_PROPERTY\n"));
+	if (WinSoftVol_IsGetKsTopologyNodesPropertyRequest(request)) {
+		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "WinSoftVol: got KS nodes property get request\n"));
 	}
 
 	WinSoftVol_ForwardRequest(device, request);	

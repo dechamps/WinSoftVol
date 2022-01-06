@@ -7,3 +7,4 @@ find_package(WDK REQUIRED)
 
 wdk_add_driver(WinSoftVol KMDF 1.11 driver.c)
 target_compile_options(WinSoftVol PRIVATE /external:anglebrackets /WX /W4 /external:W0 /permissive- /analyze /analyze:external-)
+target_link_libraries(WinSoftVol WDK::KSGUID)
