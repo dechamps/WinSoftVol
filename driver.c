@@ -58,6 +58,65 @@ static BOOL WinSoftVol_IsGetKsTopologyNodesPropertyRequest(IN WDFREQUEST request
 	return isPropertySetRequest;
 }
 
+typedef struct {
+	WDFMEMORY outputMemory;
+} RequestContext;
+WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(RequestContext, WinSoftVol_GetRequestContext);
+
+static EVT_WDF_REQUEST_COMPLETION_ROUTINE WinSoftVol_WdfRequestCompletionRoutine;
+static void WinSoftVol_WdfRequestCompletionRoutine(IN WDFREQUEST request, IN WDFIOTARGET ioTarget, IN PWDF_REQUEST_COMPLETION_PARAMS requestCompletionParams, IN WDFCONTEXT context) {
+	UNREFERENCED_PARAMETER(ioTarget);
+	UNREFERENCED_PARAMETER(context);
+
+	if (!NT_SUCCESS(requestCompletionParams->IoStatus.Status)) {
+		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "WinSoftVol: request came back with error status 0x%x\n", requestCompletionParams->IoStatus.Status));
+	}
+	else {
+		size_t ksMultipleItemSize;
+		const KSMULTIPLE_ITEM* const ksMultipleItem = WdfMemoryGetBuffer(WinSoftVol_GetRequestContext(request)->outputMemory, &ksMultipleItemSize);
+		// TODO: this doesn't work. The size is correct (72 = sizeof(KSMULTIPLE_ITEM) + 4*sizeof(GUID) for 4 nodes) but the pointer is garbage
+		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "WinSoftVol: request completed successfully - ksMultipleItem->Size = %lu, ksMultipleItem->Count = %lu, buffer size = %llu\n", ksMultipleItem->Size, ksMultipleItem->Count, ksMultipleItemSize));
+	}
+
+	WdfRequestComplete(request, requestCompletionParams->IoStatus.Status);
+}
+
+static BOOL WinSoftVol_InterceptRequest(IN WDFREQUEST request, IN WDFDEVICE device) {
+	PVOID outputBuffer;
+	size_t outputBufferLength;
+	const NTSTATUS retrieveOutputBufferStatus = WdfRequestRetrieveUnsafeUserOutputBuffer(request, sizeof(KSMULTIPLE_ITEM), &outputBuffer, &outputBufferLength);
+	if (!NT_SUCCESS(retrieveOutputBufferStatus) || outputBuffer == NULL) {
+		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: WdfRequestRetrieveUnsafeUserOutputBuffer() failed with status 0x%x\n", retrieveOutputBufferStatus));
+		return FALSE;
+	}
+
+	WDF_OBJECT_ATTRIBUTES requestContextAttributes;
+	WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&requestContextAttributes, RequestContext);
+	RequestContext* requestContext;
+	const NTSTATUS allocateContextStatus = WdfObjectAllocateContext(request, &requestContextAttributes, &requestContext);
+	if (!NT_SUCCESS(allocateContextStatus)) {
+		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: WdfObjectAllocateContext() failed with status 0x%x\n", allocateContextStatus));
+		return FALSE;
+	}
+
+	const NTSTATUS lockOutputBufferStatus = WdfRequestProbeAndLockUserBufferForWrite(request, outputBuffer, outputBufferLength, &requestContext->outputMemory);
+	if (!NT_SUCCESS(lockOutputBufferStatus)) {
+		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: WdfRequestProbeAndLockUserBufferForWrite() failed with status 0x%x\n", lockOutputBufferStatus));
+		return FALSE;
+	}
+
+	WdfRequestFormatRequestUsingCurrentType(request);
+	WdfRequestSetCompletionRoutine(request, WinSoftVol_WdfRequestCompletionRoutine, WDF_NO_CONTEXT);
+	if (!WdfRequestSend(request, WdfDeviceGetIoTarget(device), WDF_NO_SEND_OPTIONS)) {
+		const NTSTATUS requestStatus = WdfRequestGetStatus(request);
+		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: intercepting WdfRequestSend() failed with status 0x%x\n", requestStatus));
+		WdfRequestComplete(request, requestStatus);
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
 // We do not use EvtIoDeviceControl to handle IOCTLs.
 // This is because KS uses METHOD_NEITHER IOCTLs, which are difficult to forward from EvtIoDeviceControl().
 // See https://community.osr.com/discussion/comment/303709
@@ -65,6 +124,7 @@ static EVT_WDF_IO_IN_CALLER_CONTEXT WinSoftVol_EvtWdfIoInCallerContext;
 static void WinSoftVol_EvtWdfIoInCallerContext(IN WDFDEVICE device, IN WDFREQUEST request) {
 	if (WinSoftVol_IsGetKsTopologyNodesPropertyRequest(request)) {
 		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "WinSoftVol: got KS nodes property get request\n"));
+		if (WinSoftVol_InterceptRequest(request, device)) return;
 	}
 
 	WinSoftVol_ForwardRequest(device, request);	
