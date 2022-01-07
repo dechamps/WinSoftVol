@@ -3,6 +3,8 @@
 #include <Wdf.h>
 #include <minwindef.h>
 #include <ks.h>
+#include <windef.h>
+#include <ksmedia.h>
 
 static void WinSoftVol_PrintDeviceName(IN WDFDEVICE device) {
 	WDF_OBJECT_ATTRIBUTES memoryAttributes;
@@ -66,19 +68,39 @@ static void  WinSoftVol_OnRequestSuccess(IN WDFREQUEST request) {
 	// Therefore, we have to get our hands dirty and look at the IRP directly.
 	// TODO: it's not clear if all lower drivers would behave like this. We might have to support the standard way as well just in case.
 	const PIRP irp = WdfRequestWdmGetIrp(request);
-	const KSMULTIPLE_ITEM* const ksMultipleItem = irp->AssociatedIrp.SystemBuffer;
-	if (ksMultipleItem == NULL) {
+	char* const outputBuffer = irp->AssociatedIrp.SystemBuffer;
+	if (outputBuffer == NULL) {
 		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: output buffer is NULL!"));
 		return;
 	}
 
-	const ULONG ksMultipleItemLength = IoGetCurrentIrpStackLocation(irp)->Parameters.DeviceIoControl.OutputBufferLength;
-	if (ksMultipleItemLength < sizeof(*ksMultipleItem)) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: output buffer length is %lu, expected at least %zu\n", ksMultipleItemLength, sizeof(*ksMultipleItem)));
+	const ULONG outputBufferLength = IoGetCurrentIrpStackLocation(irp)->Parameters.DeviceIoControl.OutputBufferLength;
+	const size_t expectedBufferLength = sizeof(KSMULTIPLE_ITEM);
+	if (outputBufferLength < expectedBufferLength) {
+		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: output buffer length is %lu, expected at least %zu\n", outputBufferLength, expectedBufferLength));
 		return;
 	}
 
-	KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "WinSoftVol: request completed successfully - ksMultipleItem->Size = %lu, ksMultipleItem->Count = %lu, buffer length = %lu\n", ksMultipleItem->Size, ksMultipleItem->Count, ksMultipleItemLength));
+	const KSMULTIPLE_ITEM* const ksMultipleItem = irp->AssociatedIrp.SystemBuffer;
+	if (outputBufferLength < ksMultipleItem->Size) {
+		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: KSMULTIPLE_ITEM size is %lu, but the buffer length is only %lu\n", ksMultipleItem->Size, outputBufferLength));
+		return;
+	}
+
+	const ULONG itemCount = ksMultipleItem->Count;
+	const size_t expectedSize = sizeof(KSMULTIPLE_ITEM) + itemCount * sizeof(GUID);
+	if (ksMultipleItem->Size != expectedSize) {
+		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: expected KSMULTIPLE_ITEM size to be %zu for %lu items, got %lu instead\n", expectedSize, itemCount, ksMultipleItem->Size));
+		return;
+	}
+
+	for (ULONG index = 0; index < itemCount; ++index) {
+		GUID* const guid = ((GUID*)(outputBuffer + sizeof(KSMULTIPLE_ITEM))) + index;
+		if (IsEqualGUID(guid, &KSNODETYPE_VOLUME)) {
+			KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: found KSNODETYPE_VOLUME at node index %lu, replacing with dummy node\n", index));
+			*guid = GUID_NULL;
+		}
+	}
 }
 
 static EVT_WDF_REQUEST_COMPLETION_ROUTINE WinSoftVol_WdfRequestCompletionRoutine;
