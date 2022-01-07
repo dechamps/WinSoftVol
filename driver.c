@@ -141,6 +141,9 @@ static void WinSoftVol_EvtWdfIoInCallerContext(IN WDFDEVICE device, IN WDFREQUES
 		if (WinSoftVol_InterceptRequest(request, device)) return;
 	}
 
+	// According to EVT_WDF_IO_IN_CALLER_CONTEXT docs we're not supposed to do this here.
+	// However doing it in `EvtIoDeviceControl` is arguably even worse because it might not run in the original thread context, making it a poor choice for METHOD_NEITHER IOCTLs.
+	// See https://community.osr.com/discussion/comment/303709
 	WinSoftVol_ForwardRequest(device, request);	
 }
 
