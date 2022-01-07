@@ -58,10 +58,28 @@ static BOOL WinSoftVol_IsGetKsTopologyNodesPropertyRequest(IN WDFREQUEST request
 	return isPropertySetRequest;
 }
 
-typedef struct {
-	WDFMEMORY outputMemory;
-} RequestContext;
-WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(RequestContext, WinSoftVol_GetRequestContext);
+static void  WinSoftVol_OnRequestSuccess(IN WDFREQUEST request) {
+	// Note: in theory this is not the correct way to access the output buffer for METHOD_NEITHER I/O.
+	// However, in practice it has been observed that the lower driver is playing a weird game where they don't touch Irp.UserBuffer (which is the normal output buffer for METHOD_NEITHER).
+	// Instead they unilaterally set Irp.AssociatedIrp.SystemBuffer and *that* is the real output buffer. In other words they are changing the rules mid-game and suddenly decide to switch to buffered I/O for the output.
+	// Adding insult to injury, we can't use WdfRequestRetrieveOutputBuffer() because that function will notice we're trying to use it on a METHOD_NEITHER IOCTL and fail validation.
+	// Therefore, we have to get our hands dirty and look at the IRP directly.
+	// TODO: it's not clear if all lower drivers would behave like this. We might have to support the standard way as well just in case.
+	const PIRP irp = WdfRequestWdmGetIrp(request);
+	const KSMULTIPLE_ITEM* const ksMultipleItem = irp->AssociatedIrp.SystemBuffer;
+	if (ksMultipleItem == NULL) {
+		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: output buffer is NULL!"));
+		return;
+	}
+
+	const ULONG ksMultipleItemLength = IoGetCurrentIrpStackLocation(irp)->Parameters.DeviceIoControl.OutputBufferLength;
+	if (ksMultipleItemLength < sizeof(*ksMultipleItem)) {
+		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: output buffer length is %lu, expected at least %zu\n", ksMultipleItemLength, sizeof(*ksMultipleItem)));
+		return;
+	}
+
+	KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "WinSoftVol: request completed successfully - ksMultipleItem->Size = %lu, ksMultipleItem->Count = %lu, buffer length = %lu\n", ksMultipleItem->Size, ksMultipleItem->Count, ksMultipleItemLength));
+}
 
 static EVT_WDF_REQUEST_COMPLETION_ROUTINE WinSoftVol_WdfRequestCompletionRoutine;
 static void WinSoftVol_WdfRequestCompletionRoutine(IN WDFREQUEST request, IN WDFIOTARGET ioTarget, IN PWDF_REQUEST_COMPLETION_PARAMS requestCompletionParams, IN WDFCONTEXT context) {
@@ -72,39 +90,13 @@ static void WinSoftVol_WdfRequestCompletionRoutine(IN WDFREQUEST request, IN WDF
 		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "WinSoftVol: request came back with error status 0x%x\n", requestCompletionParams->IoStatus.Status));
 	}
 	else {
-		size_t ksMultipleItemSize;
-		const KSMULTIPLE_ITEM* const ksMultipleItem = WdfMemoryGetBuffer(WinSoftVol_GetRequestContext(request)->outputMemory, &ksMultipleItemSize);
-		// TODO: this doesn't work. The size is correct (72 = sizeof(KSMULTIPLE_ITEM) + 4*sizeof(GUID) for 4 nodes) but the pointer is garbage
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "WinSoftVol: request completed successfully - ksMultipleItem->Size = %lu, ksMultipleItem->Count = %lu, buffer size = %llu\n", ksMultipleItem->Size, ksMultipleItem->Count, ksMultipleItemSize));
+		WinSoftVol_OnRequestSuccess(request);
 	}
 
 	WdfRequestComplete(request, requestCompletionParams->IoStatus.Status);
 }
 
 static BOOL WinSoftVol_InterceptRequest(IN WDFREQUEST request, IN WDFDEVICE device) {
-	PVOID outputBuffer;
-	size_t outputBufferLength;
-	const NTSTATUS retrieveOutputBufferStatus = WdfRequestRetrieveUnsafeUserOutputBuffer(request, sizeof(KSMULTIPLE_ITEM), &outputBuffer, &outputBufferLength);
-	if (!NT_SUCCESS(retrieveOutputBufferStatus) || outputBuffer == NULL) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: WdfRequestRetrieveUnsafeUserOutputBuffer() failed with status 0x%x\n", retrieveOutputBufferStatus));
-		return FALSE;
-	}
-
-	WDF_OBJECT_ATTRIBUTES requestContextAttributes;
-	WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&requestContextAttributes, RequestContext);
-	RequestContext* requestContext;
-	const NTSTATUS allocateContextStatus = WdfObjectAllocateContext(request, &requestContextAttributes, &requestContext);
-	if (!NT_SUCCESS(allocateContextStatus)) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: WdfObjectAllocateContext() failed with status 0x%x\n", allocateContextStatus));
-		return FALSE;
-	}
-
-	const NTSTATUS lockOutputBufferStatus = WdfRequestProbeAndLockUserBufferForWrite(request, outputBuffer, outputBufferLength, &requestContext->outputMemory);
-	if (!NT_SUCCESS(lockOutputBufferStatus)) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: WdfRequestProbeAndLockUserBufferForWrite() failed with status 0x%x\n", lockOutputBufferStatus));
-		return FALSE;
-	}
-
 	WdfRequestFormatRequestUsingCurrentType(request);
 	WdfRequestSetCompletionRoutine(request, WinSoftVol_WdfRequestCompletionRoutine, WDF_NO_CONTEXT);
 	if (!WdfRequestSend(request, WdfDeviceGetIoTarget(device), WDF_NO_SEND_OPTIONS)) {
