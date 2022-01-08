@@ -6,6 +6,15 @@
 #include <windef.h>
 #include <ksmedia.h>
 
+#include <stdarg.h>
+
+static void WinSoftVol_Log(IN const ULONG level, _In_z_ _Printf_format_string_ const PCCH format, ...) {
+	va_list args;
+	va_start(args, format);
+	vDbgPrintExWithPrefix("WinSoftVol: ", DPFLTR_IHVAUDIO_ID, level, format, args);
+	va_end(args);
+}
+
 static void WinSoftVol_PrintDeviceName(IN WDFDEVICE device) {
 	WDF_OBJECT_ATTRIBUTES memoryAttributes;
 	WDF_OBJECT_ATTRIBUTES_INIT(&memoryAttributes);
@@ -13,11 +22,11 @@ static void WinSoftVol_PrintDeviceName(IN WDFDEVICE device) {
 	WDFMEMORY memory;
 	const NTSTATUS queryPropertyStatus = WdfDeviceAllocAndQueryProperty(device, DevicePropertyFriendlyName, PagedPool, &memoryAttributes, &memory);
 	if (!NT_SUCCESS(queryPropertyStatus)) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_WARNING_LEVEL, "WinSoftVol: WdfDeviceAllocAndQueryProperty() failed with status 0x%x\n", queryPropertyStatus));
+		WinSoftVol_Log(DPFLTR_WARNING_LEVEL, "WdfDeviceAllocAndQueryProperty() failed with status 0x%x\n", queryPropertyStatus);
 		return;
 	}
 
-	KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "WinSoftVol: attached to device `%S`\n", (wchar_t*)WdfMemoryGetBuffer(memory, /*BufferSize=*/NULL)));
+	WinSoftVol_Log(DPFLTR_INFO_LEVEL, "Attached to device `%S`\n", (wchar_t*)WdfMemoryGetBuffer(memory, /*BufferSize=*/NULL));
 
 	WdfObjectDelete(memory);
 }
@@ -27,7 +36,7 @@ static void WinSoftVol_ForwardRequest(IN WDFDEVICE device, IN WDFREQUEST request
 	WDF_REQUEST_SEND_OPTIONS_INIT(&requestSendOptions, WDF_REQUEST_SEND_OPTION_SEND_AND_FORGET);
 	if (!WdfRequestSend(request, WdfDeviceGetIoTarget(device), &requestSendOptions)) {
 		const NTSTATUS requestStatus = WdfRequestGetStatus(request);
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: forwarding WdfRequestSend() failed with status 0x%x\n", requestStatus));
+		WinSoftVol_Log(DPFLTR_ERROR_LEVEL, "Forwarding WdfRequestSend() failed with status 0x%x\n", requestStatus);
 		WdfRequestComplete(request, requestStatus);
 	}
 }
@@ -43,14 +52,14 @@ static BOOL WinSoftVol_IsGetKsTopologyNodesPropertyRequest(IN WDFREQUEST request
 	PVOID inputBuffer;
 	const NTSTATUS retrieveInputBufferStatus = WdfRequestRetrieveUnsafeUserInputBuffer(request, sizeof(KSPROPERTY), &inputBuffer, /*Length=*/NULL);
 	if (!NT_SUCCESS(retrieveInputBufferStatus) || inputBuffer == NULL) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: WdfRequestRetrieveUnsafeUserInputBuffer() failed with status 0x%x\n", retrieveInputBufferStatus));
+		WinSoftVol_Log(DPFLTR_ERROR_LEVEL, "WdfRequestRetrieveUnsafeUserInputBuffer() failed with status 0x%x\n", retrieveInputBufferStatus);
 		return FALSE;
 	}
 
 	WDFMEMORY inputMemory;
 	const NTSTATUS lockInputBufferStatus = WdfRequestProbeAndLockUserBufferForRead(request, inputBuffer, sizeof(KSPROPERTY), &inputMemory);
 	if (!NT_SUCCESS(lockInputBufferStatus)) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: WdfRequestProbeAndLockUserBufferForRead() failed with status 0x%x\n", lockInputBufferStatus));
+		WinSoftVol_Log(DPFLTR_ERROR_LEVEL, "WdfRequestProbeAndLockUserBufferForRead() failed with status 0x%x\n", lockInputBufferStatus);
 		return FALSE;
 	}
 
@@ -71,34 +80,34 @@ static void  WinSoftVol_OnRequestSuccess(IN WDFREQUEST request) {
 	const PIRP irp = WdfRequestWdmGetIrp(request);
 	char* const outputBuffer = irp->AssociatedIrp.SystemBuffer;
 	if (outputBuffer == NULL) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: output buffer is NULL!"));
+		WinSoftVol_Log(DPFLTR_ERROR_LEVEL, "Output buffer is NULL!");
 		return;
 	}
 
 	const ULONG outputBufferLength = IoGetCurrentIrpStackLocation(irp)->Parameters.DeviceIoControl.OutputBufferLength;
 	const size_t expectedBufferLength = sizeof(KSMULTIPLE_ITEM);
 	if (outputBufferLength < expectedBufferLength) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: output buffer length is %lu, expected at least %zu\n", outputBufferLength, expectedBufferLength));
+		WinSoftVol_Log(DPFLTR_ERROR_LEVEL, "Output buffer length is %lu, expected at least %zu\n", outputBufferLength, expectedBufferLength);
 		return;
 	}
 
 	const KSMULTIPLE_ITEM* const ksMultipleItem = irp->AssociatedIrp.SystemBuffer;
 	if (outputBufferLength < ksMultipleItem->Size) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: KSMULTIPLE_ITEM size is %lu, but the buffer length is only %lu\n", ksMultipleItem->Size, outputBufferLength));
+		WinSoftVol_Log(DPFLTR_ERROR_LEVEL, "KSMULTIPLE_ITEM size is %lu, but the buffer length is only %lu\n", ksMultipleItem->Size, outputBufferLength);
 		return;
 	}
 
 	const ULONG itemCount = ksMultipleItem->Count;
 	const size_t expectedSize = sizeof(KSMULTIPLE_ITEM) + itemCount * sizeof(GUID);
 	if (ksMultipleItem->Size != expectedSize) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: expected KSMULTIPLE_ITEM size to be %zu for %lu items, got %lu instead\n", expectedSize, itemCount, ksMultipleItem->Size));
+		WinSoftVol_Log(DPFLTR_ERROR_LEVEL, "Expected KSMULTIPLE_ITEM size to be %zu for %lu items, got %lu instead\n", expectedSize, itemCount, ksMultipleItem->Size);
 		return;
 	}
 
 	for (ULONG index = 0; index < itemCount; ++index) {
 		GUID* const guid = ((GUID*)(outputBuffer + sizeof(KSMULTIPLE_ITEM))) + index;
 		if (IsEqualGUID(guid, &KSNODETYPE_VOLUME)) {
-			KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: found KSNODETYPE_VOLUME at node index %lu, replacing with dummy node\n", index));
+			WinSoftVol_Log(DPFLTR_ERROR_LEVEL, "Found KSNODETYPE_VOLUME at node index %lu, replacing with dummy node\n", index);
 			*guid = GUID_NULL;
 		}
 	}
@@ -110,7 +119,7 @@ static void WinSoftVol_WdfRequestCompletionRoutine(IN WDFREQUEST request, IN WDF
 	UNREFERENCED_PARAMETER(context);
 
 	if (!NT_SUCCESS(requestCompletionParams->IoStatus.Status)) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "WinSoftVol: request came back with error status 0x%x\n", requestCompletionParams->IoStatus.Status));
+		WinSoftVol_Log(DPFLTR_INFO_LEVEL, "Request came back with error status 0x%x\n", requestCompletionParams->IoStatus.Status);
 	}
 	else {
 		WinSoftVol_OnRequestSuccess(request);
@@ -124,7 +133,7 @@ static BOOL WinSoftVol_InterceptRequest(IN WDFREQUEST request, IN WDFDEVICE devi
 	WdfRequestSetCompletionRoutine(request, WinSoftVol_WdfRequestCompletionRoutine, WDF_NO_CONTEXT);
 	if (!WdfRequestSend(request, WdfDeviceGetIoTarget(device), WDF_NO_SEND_OPTIONS)) {
 		const NTSTATUS requestStatus = WdfRequestGetStatus(request);
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: intercepting WdfRequestSend() failed with status 0x%x\n", requestStatus));
+		WinSoftVol_Log(DPFLTR_ERROR_LEVEL, "Intercepting WdfRequestSend() failed with status 0x%x\n", requestStatus);
 		WdfRequestComplete(request, requestStatus);
 		return FALSE;
 	}
@@ -138,7 +147,7 @@ static BOOL WinSoftVol_InterceptRequest(IN WDFREQUEST request, IN WDFDEVICE devi
 static EVT_WDF_IO_IN_CALLER_CONTEXT WinSoftVol_EvtWdfIoInCallerContext;
 static void WinSoftVol_EvtWdfIoInCallerContext(IN WDFDEVICE device, IN WDFREQUEST request) {
 	if (WinSoftVol_IsGetKsTopologyNodesPropertyRequest(request)) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "WinSoftVol: got KS nodes property get request\n"));
+		WinSoftVol_Log(DPFLTR_INFO_LEVEL, "Got KS nodes property get request\n");
 		if (WinSoftVol_InterceptRequest(request, device)) return;
 	}
 
@@ -158,7 +167,7 @@ static NTSTATUS WinSoftVol_EvtWdfDriverDeviceAdd(IN WDFDRIVER driver, IN PWDFDEV
 	WDFDEVICE device;
 	const NTSTATUS deviceCreateStatus = WdfDeviceCreate(&deviceInit, WDF_NO_OBJECT_ATTRIBUTES, &device);
 	if (!NT_SUCCESS(deviceCreateStatus)) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: WdfDeviceCreate() failed with status 0x%x\n", deviceCreateStatus));
+		WinSoftVol_Log(DPFLTR_ERROR_LEVEL, "WdfDeviceCreate() failed with status 0x%x\n", deviceCreateStatus);
 		return deviceCreateStatus;
 	}
 
@@ -168,12 +177,12 @@ static NTSTATUS WinSoftVol_EvtWdfDriverDeviceAdd(IN WDFDRIVER driver, IN PWDFDEV
 }
 
 NTSTATUS DriverEntry(IN PDRIVER_OBJECT driverObject, IN PUNICODE_STRING registryPath) {
-	KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "WinSoftVol: loading driver\n"));
+	KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "Loading driver\n"));
 
 	WDF_DRIVER_CONFIG config;
 	WDF_DRIVER_CONFIG_INIT(&config, WinSoftVol_EvtWdfDriverDeviceAdd);
 
 	const NTSTATUS driverCreateStatus = WdfDriverCreate(driverObject, registryPath, WDF_NO_OBJECT_ATTRIBUTES, &config, WDF_NO_HANDLE);
-	if (!NT_SUCCESS(driverCreateStatus)) KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: WdfDriverCreate() failed with status 0x%x\n", driverCreateStatus));
+	if (!NT_SUCCESS(driverCreateStatus)) WinSoftVol_Log(DPFLTR_ERROR_LEVEL, "WdfDriverCreate() failed with status 0x%x\n", driverCreateStatus);
 	return driverCreateStatus;
 }
