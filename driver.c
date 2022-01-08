@@ -32,75 +32,52 @@ static void WinSoftVol_ForwardRequest(IN WDFDEVICE device, IN WDFREQUEST request
 	}
 }
 
-static BOOL WinSoftVol_IsGetKsTopologyNodesPropertyRequest(IN WDFREQUEST request) {
-	WDF_REQUEST_PARAMETERS requestParameters;
-	WDF_REQUEST_PARAMETERS_INIT(&requestParameters);
-	WdfRequestGetParameters(request, &requestParameters);
+typedef enum {
+	BUFFER_CONTENT_TYPE_NULL,
+	BUFFER_CONTENT_TYPE_KSMULTIPLEITEM_GUID,
+	BUFFER_CONTENT_TYPE_KSPROPERTY_GET_TOPOLOGY_NODES,
+	BUFFER_CONTENT_TYPE_UNKNOWN,
+} BufferContentType;
 
-	if (requestParameters.Type != WdfRequestTypeDeviceControl) return FALSE;
-	if (requestParameters.Parameters.DeviceIoControl.IoControlCode != IOCTL_KS_PROPERTY) return FALSE;
+static BufferContentType WinSoftVol_GuessBufferContentType(IN const void* const buffer) {
+	if (buffer == NULL) return BUFFER_CONTENT_TYPE_NULL;
 
-	PVOID inputBuffer;
-	const NTSTATUS retrieveInputBufferStatus = WdfRequestRetrieveUnsafeUserInputBuffer(request, sizeof(KSPROPERTY), &inputBuffer, /*Length=*/NULL);
-	if (!NT_SUCCESS(retrieveInputBufferStatus) || inputBuffer == NULL) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: WdfRequestRetrieveUnsafeUserInputBuffer() failed with status 0x%x\n", retrieveInputBufferStatus));
-		return FALSE;
-	}
+	const KSMULTIPLE_ITEM* const ksMultipleItem = buffer;
+	if (ksMultipleItem->Size == sizeof(KSMULTIPLE_ITEM) + ksMultipleItem->Count * sizeof(GUID))
+		return BUFFER_CONTENT_TYPE_KSMULTIPLEITEM_GUID;
 
-	WDFMEMORY inputMemory;
-	const NTSTATUS lockInputBufferStatus = WdfRequestProbeAndLockUserBufferForRead(request, inputBuffer, sizeof(KSPROPERTY), &inputMemory);
-	if (!NT_SUCCESS(lockInputBufferStatus)) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: WdfRequestProbeAndLockUserBufferForRead() failed with status 0x%x\n", lockInputBufferStatus));
-		return FALSE;
-	}
+	const KSPROPERTY* const ksProperty = buffer;
+	if (IsEqualGUID(&ksProperty->Set, &KSPROPSETID_Topology) && ksProperty->Id == KSPROPERTY_TOPOLOGY_NODES && ksProperty->Flags & KSPROPERTY_TYPE_GET)
+		return BUFFER_CONTENT_TYPE_KSPROPERTY_GET_TOPOLOGY_NODES;
 
-	const KSPROPERTY* const ksProperty = WdfMemoryGetBuffer(inputMemory, /*BufferSize=*/NULL);
-	const BOOL isPropertySetRequest = IsEqualGUID(&ksProperty->Set, &KSPROPSETID_Topology) && ksProperty->Id == KSPROPERTY_TOPOLOGY_NODES && ksProperty->Flags & KSPROPERTY_TYPE_GET;
-	WdfObjectDelete(inputMemory);
-	return isPropertySetRequest;
+	return BUFFER_CONTENT_TYPE_UNKNOWN;
 }
 
-static void  WinSoftVol_OnRequestSuccess(IN WDFREQUEST request) {
-	// Note: in theory this is not the correct way to access the output buffer for METHOD_NEITHER I/O.
-	// However, in practice it has been observed that the lower driver is playing a weird game where they don't touch Irp.UserBuffer (which is the normal output buffer for METHOD_NEITHER).
-	// Instead they unilaterally set Irp.AssociatedIrp.SystemBuffer and *that* is the real output buffer. In other words they are changing the rules mid-game and suddenly decide to switch to buffered I/O for the output.
-	// Adding insult to injury, we can't use WdfRequestRetrieveOutputBuffer() because that function will notice we're trying to use it on a METHOD_NEITHER IOCTL and fail validation.
-	// Therefore, we have to get our hands dirty and look at the IRP directly.
-	// TODO: it's not clear if all lower drivers would behave like this. We might have to support the standard way as well just in case.
-	const PIRP irp = WdfRequestWdmGetIrp(request);
-	char* const outputBuffer = irp->AssociatedIrp.SystemBuffer;
-	if (outputBuffer == NULL) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: output buffer is NULL!"));
-		return;
+static const char* WinSoftVol_DescribeBufferContentType(IN const BufferContentType bufferContentType) {
+	switch (bufferContentType) {
+	case BUFFER_CONTENT_TYPE_NULL: return "(null)";
+	case BUFFER_CONTENT_TYPE_KSMULTIPLEITEM_GUID: return "KSMULTIPLE_ITEM response with GUIDs";
+	case BUFFER_CONTENT_TYPE_KSPROPERTY_GET_TOPOLOGY_NODES: return "KSPROPERTY topology nodes get request";
+	case BUFFER_CONTENT_TYPE_UNKNOWN: return "unknown/garbage";
+	default: return "";
 	}
+}
 
-	const ULONG outputBufferLength = IoGetCurrentIrpStackLocation(irp)->Parameters.DeviceIoControl.OutputBufferLength;
-	const size_t expectedBufferLength = sizeof(KSMULTIPLE_ITEM);
-	if (outputBufferLength < expectedBufferLength) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: output buffer length is %lu, expected at least %zu\n", outputBufferLength, expectedBufferLength));
-		return;
-	}
+static void WinSoftVol_DescribeBuffer(IN const char* const name, IN const void* const buffer) {
+	KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_TRACE_LEVEL, "WinSoftVol: %s = 0x%p [%s]\n", name, buffer, WinSoftVol_DescribeBufferContentType(WinSoftVol_GuessBufferContentType(buffer))));
+}
 
-	const KSMULTIPLE_ITEM* const ksMultipleItem = irp->AssociatedIrp.SystemBuffer;
-	if (outputBufferLength < ksMultipleItem->Size) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: KSMULTIPLE_ITEM size is %lu, but the buffer length is only %lu\n", ksMultipleItem->Size, outputBufferLength));
-		return;
-	}
+static BOOL WinSoftVol_ProbeIrpBuffers(IN const PIRP irp, const BufferContentType expectedBufferContentType) {
+	return
+		WinSoftVol_GuessBufferContentType(irp->AssociatedIrp.SystemBuffer) == expectedBufferContentType ||
+		WinSoftVol_GuessBufferContentType(irp->UserBuffer) == expectedBufferContentType ||
+		WinSoftVol_GuessBufferContentType(IoGetCurrentIrpStackLocation(irp)->Parameters.DeviceIoControl.Type3InputBuffer) == expectedBufferContentType;
+}
 
-	const ULONG itemCount = ksMultipleItem->Count;
-	const size_t expectedSize = sizeof(KSMULTIPLE_ITEM) + itemCount * sizeof(GUID);
-	if (ksMultipleItem->Size != expectedSize) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: expected KSMULTIPLE_ITEM size to be %zu for %lu items, got %lu instead\n", expectedSize, itemCount, ksMultipleItem->Size));
-		return;
-	}
-
-	for (ULONG index = 0; index < itemCount; ++index) {
-		GUID* const guid = ((GUID*)(outputBuffer + sizeof(KSMULTIPLE_ITEM))) + index;
-		if (IsEqualGUID(guid, &KSNODETYPE_VOLUME)) {
-			KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_ERROR_LEVEL, "WinSoftVol: found KSNODETYPE_VOLUME at node index %lu, replacing with dummy node\n", index));
-			*guid = GUID_NULL;
-		}
-	}
+static void WinSoftVol_PrintIrpBuffers(IN const PIRP irp) {
+	WinSoftVol_DescribeBuffer("AssociatedIrp.SystemBuffer", irp->AssociatedIrp.SystemBuffer);
+	WinSoftVol_DescribeBuffer("UserBuffer", irp->UserBuffer);
+	WinSoftVol_DescribeBuffer("Parameters.DeviceIoControl.Type3InputBuffer", IoGetCurrentIrpStackLocation(irp)->Parameters.DeviceIoControl.Type3InputBuffer);
 }
 
 static EVT_WDF_REQUEST_COMPLETION_ROUTINE WinSoftVol_WdfRequestCompletionRoutine;
@@ -112,7 +89,8 @@ static void WinSoftVol_WdfRequestCompletionRoutine(IN WDFREQUEST request, IN WDF
 		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "WinSoftVol: request came back with error status 0x%x\n", requestCompletionParams->IoStatus.Status));
 	}
 	else {
-		WinSoftVol_OnRequestSuccess(request);
+		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "WinSoftVol: in completion routine:\n"));
+		WinSoftVol_PrintIrpBuffers(WdfRequestWdmGetIrp(request));
 	}
 
 	WdfRequestComplete(request, requestCompletionParams->IoStatus.Status);
@@ -136,8 +114,10 @@ static BOOL WinSoftVol_InterceptRequest(IN WDFREQUEST request, IN WDFDEVICE devi
 // See https://community.osr.com/discussion/comment/303709
 static EVT_WDF_IO_IN_CALLER_CONTEXT WinSoftVol_EvtWdfIoInCallerContext;
 static void WinSoftVol_EvtWdfIoInCallerContext(IN WDFDEVICE device, IN WDFREQUEST request) {
-	if (WinSoftVol_IsGetKsTopologyNodesPropertyRequest(request)) {
-		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "WinSoftVol: got KS nodes property get request\n"));
+	const PIRP irp = WdfRequestWdmGetIrp(request);
+	if (WinSoftVol_ProbeIrpBuffers(irp, BUFFER_CONTENT_TYPE_KSPROPERTY_GET_TOPOLOGY_NODES)) {
+		KdPrintEx((DPFLTR_IHVAUDIO_ID, DPFLTR_INFO_LEVEL, "WinSoftVol: got KS nodes property get request:\n"));
+		WinSoftVol_PrintIrpBuffers(irp);
 		if (WinSoftVol_InterceptRequest(request, device)) return;
 	}
 
