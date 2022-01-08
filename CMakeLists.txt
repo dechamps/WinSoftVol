@@ -35,3 +35,5 @@ add_custom_command(
 add_custom_target(WinSoftVol_TestSigned ALL
 	DEPENDS WinSoftVol_TestSigned.sys
 )
+
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/WinSoftVol_TestSigned.sys" TYPE BIN)
