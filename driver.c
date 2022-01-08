@@ -66,6 +66,7 @@ static void  WinSoftVol_OnRequestSuccess(IN WDFREQUEST request) {
 	// Instead they unilaterally set Irp.AssociatedIrp.SystemBuffer and *that* is the real output buffer. In other words they are changing the rules mid-game and suddenly decide to switch to buffered I/O for the output.
 	// Adding insult to injury, we can't use WdfRequestRetrieveOutputBuffer() because that function will notice we're trying to use it on a METHOD_NEITHER IOCTL and fail validation.
 	// Therefore, we have to get our hands dirty and look at the IRP directly.
+	// See https://community.osr.com/discussion/comment/303718/#Comment_303718 for details.
 	// TODO: it's not clear if all lower drivers would behave like this. We might have to support the standard way as well just in case.
 	const PIRP irp = WdfRequestWdmGetIrp(request);
 	char* const outputBuffer = irp->AssociatedIrp.SystemBuffer;
