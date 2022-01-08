@@ -29,17 +29,17 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: ${{ matrix.msvc_arch }}
-      - run: cmake -B out/build/${{ matrix.msvc_config }} -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DCMAKE_INSTALL_PREFIX:PATH=${{ github.workspace }}/out/install/${{ matrix.msvc_config }}
-      - run: cmake --build out/build/${{ matrix.msvc_config }}
-      - run: cmake --install out/build/${{ matrix.msvc_config }}
+      - run: cmake -S src -B src/out/build/${{ matrix.msvc_config }} -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DCMAKE_INSTALL_PREFIX:PATH=${{ github.workspace }}/src/out/install/${{ matrix.msvc_config }}
+      - run: cmake --build src/out/build/${{ matrix.msvc_config }}
+      - run: cmake --install src/out/build/${{ matrix.msvc_config }}
       - uses: actions/upload-artifact@v2
         with:
           name: WinSoftVol-${{ matrix.msvc_config }}
-          path: out/install/${{ matrix.msvc_config }}/
-      - run: (Get-AuthenticodeSignature out/install/${{ matrix.msvc_config }}/bin/WinSoftVol_TestSigned.sys).SignerCertificate | Export-Certificate -FilePath cert.cer
+          path: src/out/install/${{ matrix.msvc_config }}/
+      - run: (Get-AuthenticodeSignature src/out/install/${{ matrix.msvc_config }}/bin/WinSoftVol_TestSigned.sys).SignerCertificate | Export-Certificate -FilePath cert.cer
         shell: powershell
       - run: Import-Certificate -FilePath cert.cer -CertStoreLocation Cert:\LocalMachine\root
         shell: powershell
-      - run: sc.exe create WinSoftVol ("binPath=" + (Resolve-Path "out/install/${{ matrix.msvc_config }}/bin/WinSoftVol_TestSigned.sys")) type=kernel
+      - run: sc.exe create WinSoftVol ("binPath=" + (Resolve-Path "src/out/install/${{ matrix.msvc_config }}/bin/WinSoftVol_TestSigned.sys")) type=kernel
       - run: sc.exe start WinSoftVol
         if: ${{ matrix.test }}
