@@ -146,6 +146,8 @@ static BOOL WinSoftVol_InterceptRequest(IN WDFREQUEST request, IN WDFDEVICE devi
 // See https://community.osr.com/discussion/comment/303709
 static EVT_WDF_IO_IN_CALLER_CONTEXT WinSoftVol_EvtWdfIoInCallerContext;
 static void WinSoftVol_EvtWdfIoInCallerContext(IN WDFDEVICE device, IN WDFREQUEST request) {
+	// Note: an alternative approach, which was observed to work in practice, would be to intercept KSPROPSETID_Audio KSPROPERTY_AUDIO_VOLUMELEVEL requests and fail them with STATUS_NOT_FOUND.
+	// That alternative approach would be simpler, but it might be confusing to applications because we would be exposing a KSNODETYPE_VOLUME volume that is missing the KSPROPERTY_AUDIO_VOLUMELEVEL property.
 	if (WinSoftVol_IsGetKsTopologyNodesPropertyRequest(request)) {
 		WinSoftVol_Log(DPFLTR_INFO_LEVEL, "Got KS nodes property get request\n");
 		if (WinSoftVol_InterceptRequest(request, device)) return;
