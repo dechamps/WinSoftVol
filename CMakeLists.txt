@@ -11,6 +11,9 @@ wdk_add_driver(WinSoftVol KMDF 1.11 driver.c)
 target_compile_options(WinSoftVol PRIVATE /external:anglebrackets /WX /W4 /external:W0 /permissive- /analyze /analyze:external-)
 target_link_libraries(WinSoftVol WDK::KSGUID)
 
+install(TARGETS WinSoftVol RUNTIME DESTINATION bin)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/WinSoftVol.pdb" TYPE BIN OPTIONAL)
+
 add_custom_command(
 	OUTPUT TestCertificate.cer TestCertificate.pvk
 	# Unfortunately we can't use makecert.exe for this because it insists on interactively asking the user for a password (sigh...)
