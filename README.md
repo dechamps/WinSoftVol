@@ -465,6 +465,10 @@ present on the selected device.
 
 ### Step 6: attach WinSoftVol to the device
 
+**Note:** before you proceed any further, you might want to set your device's
+(currently hardware) volume control to 100%. Otherwise it might remember its
+current value and you won't be able to easily change it later.
+
 In the Registry Editor, navigate to:
 
 ```
