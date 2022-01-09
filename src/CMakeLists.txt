@@ -15,28 +15,28 @@ install(TARGETS WinSoftVol RUNTIME DESTINATION bin)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/WinSoftVol.pdb" TYPE BIN OPTIONAL)
 
 add_custom_command(
-	OUTPUT TestCertificate.cer TestCertificate.pvk
+	OUTPUT Certificate.cer Certificate.pvk
 	# Unfortunately we can't use makecert.exe for this because it insists on interactively asking the user for a password (sigh...)
-	COMMAND "${OPENSSL}" req -config "${CMAKE_CURRENT_LIST_DIR}/openssl.cnf" -batch -verbose -x509 -newkey rsa -keyout TestCertificate.pvk -out TestCertificate.cer -days 3650 -nodes
+	COMMAND "${OPENSSL}" req -config "${CMAKE_CURRENT_LIST_DIR}/openssl.cnf" -batch -verbose -x509 -newkey rsa -keyout Certificate.pvk -out Certificate.cer -days 3650 -nodes
 	VERBATIM
 )
 
 add_custom_command(
-	OUTPUT TestCertificate.pfx
-	COMMAND "${OPENSSL}" pkcs12 -export -nodes -in TestCertificate.cer -inkey TestCertificate.pvk -out TestCertificate.pfx -passout pass:
-	DEPENDS TestCertificate.cer TestCertificate.pvk
+	OUTPUT Certificate.pfx
+	COMMAND "${OPENSSL}" pkcs12 -export -nodes -in Certificate.cer -inkey Certificate.pvk -out Certificate.pfx -passout pass:
+	DEPENDS Certificate.cer Certificate.pvk
 	VERBATIM
 )
 
 add_custom_command(
-	OUTPUT WinSoftVol_TestSigned.sys
-	COMMAND ${CMAKE_COMMAND} -E copy WinSoftVol.sys WinSoftVol_TestSigned.sys
-	COMMAND "${WDK_ROOT}/bin/${WDK_VERSION}/${WDK_PLATFORM}/signtool.exe" sign /v /fd SHA256 /f TestCertificate.pfx WinSoftVol_TestSigned.sys
-	DEPENDS WinSoftVol.sys TestCertificate.pfx
+	OUTPUT WinSoftVol_SelfSigned.sys
+	COMMAND ${CMAKE_COMMAND} -E copy WinSoftVol.sys WinSoftVol_SelfSigned.sys
+	COMMAND "${WDK_ROOT}/bin/${WDK_VERSION}/${WDK_PLATFORM}/signtool.exe" sign /v /fd SHA256 /f Certificate.pfx WinSoftVol_SelfSigned.sys
+	DEPENDS WinSoftVol.sys Certificate.pfx
 	VERBATIM
 )
-add_custom_target(WinSoftVol_TestSigned ALL
-	DEPENDS WinSoftVol_TestSigned.sys
+add_custom_target(WinSoftVol_SelfSigned ALL
+	DEPENDS WinSoftVol_SelfSigned.sys
 )
 
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/WinSoftVol_TestSigned.sys" TYPE BIN)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/WinSoftVol_SelfSigned.sys" TYPE BIN)

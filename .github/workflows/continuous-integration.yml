@@ -36,10 +36,10 @@ jobs:
         with:
           name: WinSoftVol-${{ matrix.msvc_config }}
           path: src/out/install/${{ matrix.msvc_config }}/
-      - run: (Get-AuthenticodeSignature src/out/install/${{ matrix.msvc_config }}/bin/WinSoftVol_TestSigned.sys).SignerCertificate | Export-Certificate -FilePath cert.cer
+      - run: (Get-AuthenticodeSignature src/out/install/${{ matrix.msvc_config }}/bin/WinSoftVol_SelfSigned.sys).SignerCertificate | Export-Certificate -FilePath cert.cer
         shell: powershell
       - run: Import-Certificate -FilePath cert.cer -CertStoreLocation Cert:\LocalMachine\root
         shell: powershell
-      - run: sc.exe create WinSoftVol ("binPath=" + (Resolve-Path "src/out/install/${{ matrix.msvc_config }}/bin/WinSoftVol_TestSigned.sys")) type=kernel
+      - run: sc.exe create WinSoftVol ("binPath=" + (Resolve-Path "src/out/install/${{ matrix.msvc_config }}/bin/WinSoftVol_SelfSigned.sys")) type=kernel
       - run: sc.exe start WinSoftVol
         if: ${{ matrix.test }}
