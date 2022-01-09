@@ -18,6 +18,7 @@ add_custom_command(
 	OUTPUT Certificate.cer Certificate.pvk
 	# Unfortunately we can't use makecert.exe for this because it insists on interactively asking the user for a password (sigh...)
 	COMMAND "${OPENSSL}" req -config "${CMAKE_CURRENT_LIST_DIR}/openssl.cnf" -batch -verbose -x509 -newkey rsa -keyout Certificate.pvk -out Certificate.cer -days 3650 -nodes
+	DEPENDS "${CMAKE_CURRENT_LIST_DIR}/openssl.cnf"
 	VERBATIM
 )
 
