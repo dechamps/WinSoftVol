@@ -14,8 +14,8 @@ any audio device driver. It works by intercepting hardware volume control
 queries from the Windows audio engine before they make their way to the audio
 device driver.
 
-This project can also serve as a nice code sample for a trivial, minimalistic
-[Kernel Streaming][] [WDF][] [filter driver][msfilter].
+This project can also serve as a nice [code sample][] for a trivial,
+minimalistic [Kernel Streaming][] [WDF][] [filter driver][msfilter].
 
 ## Why would I possibly want to use this?
 
@@ -601,6 +601,7 @@ strange behaviour of Kernel Streaming requests.
 [audio endpoints]: https://docs.microsoft.com/en-us/windows/win32/coreaudio/audio-endpoint-devices
 [avoid clipping]: https://www.audiosciencereview.com/forum/index.php?threads/ending-the-windows-audio-quality-debate.19438/page-16#post-1025696
 [CAudioLimiter]: https://www.audiosciencereview.com/forum/index.php?threads/ending-the-windows-audio-quality-debate.19438/
+[code sample]: src/
 [DAC non-linearities]: https://www.audiosciencereview.com/forum/index.php?threads/how-important-is-dac-linearity.7878/
 [DebugView]: https://docs.microsoft.com/en-us/sysinternals/downloads/debugview
 [diagrams]: https://docs.microsoft.com/en-us/windows-hardware/drivers/audio/audio-processing-object-architecture#audio-processing-objects-architecture
